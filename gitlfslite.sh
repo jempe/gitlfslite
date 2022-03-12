@@ -1,6 +1,17 @@
 #!/bin/bash
 
-echo "Git LFS Lite" 
+function show_help() {
+	echo "Git LFS Lite" 
+	echo "Usage:"
+	echo "gitlfslite summaries"
+	echo "	create sha256 summaries to check the integrity of files later"
+	echo "gitlfslite check"
+	echo "	check the integrity of all files"
+	echo "gitlfslite rsynclist"
+	echo "	create file to sync files between cloned repos with rsync"
+	echo "  sync repo files with the command"
+	echo "  rsync --files-from=rsync_list.gitlfslite . [destination]"  
+}
 
 function get_lfslite_files() {
 	LFSLiteComment=0 
@@ -35,13 +46,11 @@ function create_summaries() {
 
 function check_summaries() {
 	echo "Check summaries" 
-	FILELIST=$(get_lfslite_files)
+	FILELIST=$(find . -type f -iname "*.shasum")
 
 	for FILE in $FILELIST;
 	do
-		SUMMARYFILE=$FILE".shasum" 		
-
-		RESPONSE=$(shasum -c $SUMMARYFILE)
+		RESPONSE=$(shasum -c $FILE)
 
 		if echo "$RESPONSE" | grep -q "FAILED"; then
 			echo $RESPONSE
@@ -70,7 +79,23 @@ function create_rsync_list() {
 	
 }
 
-#create_summaries
-#check_summaries
-create_rsync_list
-#get_lfslite_files
+if [ -d ".git" ]; then
+	if [ -f ".gitignore" ]; then
+		COMMAND="$1"
+
+		case "$1" in
+			check) shift;		check_summaries ;;
+			summaries) shift;	create_summaries ;;
+			rsynclist) shift;	create_rsync_list ;;
+			*)			show_help ;;
+		esac
+
+		exit 0
+	else
+		echo ".gitignore file not found"
+		exit 1 
+	fi 
+else
+	echo "Git repo folder not found, run this script in the git repo root" 
+	exit 1
+fi
