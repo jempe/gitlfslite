@@ -11,7 +11,7 @@ function show_help() {
 	echo "gitlfslite rsynclist"
 	echo "	create file to sync files between cloned repos with rsync"
 	echo "  sync repo files with the command"
-	echo "  rsync --files-from=rsync_list.gitlfslite . [destination]"  
+	echo "  rsync -t --files-from=rsync_list.gitlfslite . [destination]"  
 }
 
 function get_lfslite_files() {
