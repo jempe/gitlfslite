@@ -97,6 +97,12 @@ if [ -d ".git" ]; then
 		exit 1 
 	fi 
 else
-	echo "Git repo folder not found, run this script in the git repo root" 
-	exit 1
+	if [ -z "$1" ]; then
+		show_help
+	else
+		echo "Git repo folder not found, run this script in the git repo root"
+		exit 1
+	fi
+
+	exit 0
 fi
