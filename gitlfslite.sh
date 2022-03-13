@@ -1,7 +1,8 @@
 #!/bin/bash
 
 function show_help() {
-	echo "Git LFS Lite" 
+	echo "Git LFS Lite"
+       	echo "To select which files will be using git LFS Lite add #GitLFSLite to your .gitignore and add the files or file types you want to track after that line"	
 	echo "Usage:"
 	echo "gitlfslite summaries"
 	echo "	create sha256 summaries to check the integrity of files later"
