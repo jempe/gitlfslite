@@ -40,8 +40,13 @@ function create_summaries() {
 		SUMMARYFILE=$FILE".shasum" 		
 		DATEFILE=$FILE".gitlfslite" 		
 
-		shasum -a 256 $FILE > $SUMMARYFILE
-		date -r $FILE > $DATEFILE
+		if test -f "$SUMMARYFILE";
+		then
+			echo "Summary file $SUMMARYFILE already exists"
+		else
+			shasum -a 256 $FILE > $SUMMARYFILE
+			date -r $FILE > $DATEFILE
+		fi
 	done
 }
 
