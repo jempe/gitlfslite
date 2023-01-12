@@ -19,7 +19,7 @@ function get_lfslite_files() {
 	LFSLiteFiles=()
 	while read line; do
 		if echo "$LFSLiteComment" | grep -q "1"; then
-			LFSLiteFiles+=$(find . -type f -iname "$line")
+			LFSLiteFiles+=$(find . -type f -iname "$line" | sort)
 			LFSLiteFiles+=" " 
 		fi  
 
@@ -70,7 +70,7 @@ function check_summaries() {
 
 function create_rsync_list() {
 	echo "Create RSYNC list" 
-	FILELIST=$(get_lfslite_files)
+	FILELIST=$(get_lfslite_files | sort)
 
 	LISTNAME="rsync_list.gitlfslite" 
 
