@@ -48,6 +48,8 @@ function create_summaries() {
 			date -r $FILE > $DATEFILE
 		fi
 	done
+
+	create_rsync_list
 }
 
 function check_summaries() {
