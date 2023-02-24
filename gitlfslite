@@ -1,5 +1,7 @@
 #!/bin/bash
 
+CURRENTDIR=$(pwd)
+
 function show_help() {
 	echo "Git LFS Lite"
        	echo "To select which files will be using git LFS Lite add #GitLFSLite to your .gitignore and add the files or file types you want to track after that line"	
@@ -100,14 +102,14 @@ if [ -d ".git" ]; then
 
 		exit 0
 	else
-		echo ".gitignore file not found"
+		echo ".gitignore file not found in $CURRENTDIR"
 		exit 1 
 	fi 
 else
 	if [ -z "$1" ]; then
 		show_help
 	else
-		echo "Git repo folder not found, run this script in the git repo root"
+		echo "Git repo folder not found in $CURRENTDIR, run this script in the git repo root"
 		exit 1
 	fi
 
