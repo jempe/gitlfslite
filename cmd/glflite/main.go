@@ -18,7 +18,7 @@ const (
 
 type config struct {
 	rootFolder string
-	fileRules  []fileRule
+	fileRules  []string
 	instance   struct {
 		hostname string
 		path     string
@@ -26,13 +26,19 @@ type config struct {
 	}
 }
 
-type fileRule struct {
-	extension string
-	filename  string
-	path      string
+type fileInformation struct {
+	path            string
+	isDirectory     bool
+	lastModified    int64
+	sha256sum       string
+	glfliteFilePath string
 }
 
+var fileList map[string]fileInformation
+
 func main() {
+	var cfg config
+
 	gitFolder, err := findGitFolder()
 
 	if err != nil {
@@ -58,7 +64,27 @@ func main() {
 		printError(err.Error())
 	}
 
-	fmt.Println(fileRules)
+	cfg.rootFolder = gitFolder
+	cfg.fileRules = fileRules
+
+	// TODO Add instance information to find out if a files is backed up on another instance easily
+
+	files, err := findAllFilesAndFolders(cfg.rootFolder)
+
+	if err != nil {
+		printError(err.Error())
+	}
+
+	for _, file := range files {
+		if isFileExcluded(cfg.fileRules, strings.TrimPrefix(file.Path, "./"), file.IsDirectory) {
+			file.GlfliteFilePath = getGLFLiteFilePath(file.Path)
+			fmt.Printf("Exclude File: %s \nGLFLite File: %s\n", file.Path, file.GlfliteFilePath)
+		}
+
+		if isFileExcluded(cfg.fileRules, strings.TrimPrefix(file.Path, "./"), file.IsDirectory) {
+			file.
+
+	}
 }
 
 func printError(message string) {

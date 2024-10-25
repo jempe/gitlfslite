@@ -79,7 +79,7 @@ func createGitIgnoreFile(folder string) error {
 	return nil
 }
 
-func getGitIgnoreContent(folder string) (fileRules []fileRule, err error) {
+func getGitIgnoreContent(folder string) (fileRules []string, err error) {
 	gitIgnoreFile := folder + "/.gitignore"
 
 	if !fileExists(gitIgnoreFile) {
@@ -101,16 +101,8 @@ func getGitIgnoreContent(folder string) (fileRules []fileRule, err error) {
 		}
 
 		if foundGitLFSLite {
-			line = strings.TrimSpace(line)
-
 			if line != "" {
-
-				if strings.HasPrefix(line, "*") {
-					fileRules = append(fileRules, fileRule{extension: strings.TrimPrefix(line, "*"), filename: "*", path: ""})
-				} else {
-					fileRules = append(fileRules, fileRule{extension: filepath.Ext(line), filename: filepath.Base(line), path: filepath.Dir(line)})
-				}
-
+				fileRules = append(fileRules, line)
 			}
 		}
 	}
@@ -150,4 +142,144 @@ func getCurrentFolder() string {
 	}
 
 	return dir
+}
+
+func findAllFilesAndFolders(folder string) (files map[string]fileInformation, err error) {
+
+	err = filepath.Walk(folder, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relativePath := strings.TrimPrefix(path, folder)
+
+		//exclude setup file
+
+		if relativePath == "/"+setupFile {
+			return nil
+		}
+
+		// exclude the root folder
+		if relativePath == "" {
+			return nil
+		}
+
+		// exclude the .git folder
+		if relativePath == "/.git" {
+			return nil
+		}
+
+		// exclude .git folder and its content
+		if strings.HasPrefix(relativePath, "/.git/") {
+			return nil
+		}
+
+		// exclude .gitignore file
+		if strings.HasPrefix(relativePath, "/.gitignore") {
+			return nil
+		}
+
+		filePath := ""
+		glfliteFilePath := ""
+
+		if isGLFLiteFile(relativePath) {
+			filePath = getExcludedFilePath(relativePath)
+			glfliteFilePath = relativePath
+		} else {
+		}
+
+		filePath = "." + relativePath
+
+		files = append(files, fileInformation{
+			Path:         info
+			IsDirectory:  info.IsDir(),
+			LastModified: info.ModTime().Unix(),
+		})
+
+		return nil
+	})
+
+	if err != nil {
+		return files, err
+	}
+
+	return files, nil
+}
+
+func isGLFLiteFile(file string) bool {
+
+	return strings.HasSuffix(file, "."+fileExtension)
+}
+
+func getGLFLiteFilePath(file string) string {
+
+	return file + "." + fileExtension
+}
+
+func getExcludedFilePath(file string) string {
+
+	return strings.TrimSuffix(file, "."+fileExtension)
+}
+
+func isFileExcluded(gitIgnoreFiles []string, path string, isDir bool) bool {
+
+	// This will store whether the file is currently excluded
+	isExcluded := false
+
+	// Iterate through the lines of the .gitignore
+	for _, line := range gitIgnoreFiles {
+		// Trim whitespace and ignore empty lines and comments
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Handle negation ("!" prefix means inclusion)
+		negate := false
+		if strings.HasPrefix(line, "!") {
+			negate = true
+			line = line[1:] // Remove the "!" prefix
+		}
+
+		// Normalize pattern for cross-platform compatibility
+		line = filepath.ToSlash(line)
+
+		// Check if the line is a directory pattern (ends with "/")
+		isPatternDir := strings.HasSuffix(line, "/")
+		if isPatternDir {
+			// Remove the trailing "/" for directory patterns
+			line = strings.TrimSuffix(line, "/")
+		}
+
+		// Match pattern using filepath.Match (but handling special cases)
+		matched := false
+		if strings.HasPrefix(line, "*") {
+			excludedFileSuffix := strings.TrimPrefix(line, "*")
+
+			if strings.HasSuffix(path, excludedFileSuffix) {
+				matched = true
+			}
+		} else {
+			// Use normal matching for other patterns
+			if path == line {
+				matched = true
+			}
+		}
+
+		// If it's a directory pattern, ensure we're matching a directory
+		if isPatternDir && !isDir {
+			matched = false
+		}
+
+		// Apply the rule based on whether the pattern matched and whether it's a negation
+		if matched {
+			if negate {
+				isExcluded = false // Negate means re-inclusion
+			} else {
+				isExcluded = true // Otherwise, exclude the file
+			}
+		}
+	}
+
+	return isExcluded
 }
