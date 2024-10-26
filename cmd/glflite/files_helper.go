@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -144,7 +146,7 @@ func getCurrentFolder() string {
 	return dir
 }
 
-func findAllFilesAndFolders(folder string) (files map[string]fileInformation, err error) {
+func findAllFilesAndFolders(folder string) (files []fileInformation, err error) {
 
 	err = filepath.Walk(folder, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -179,21 +181,13 @@ func findAllFilesAndFolders(folder string) (files map[string]fileInformation, er
 			return nil
 		}
 
-		filePath := ""
-		glfliteFilePath := ""
-
-		if isGLFLiteFile(relativePath) {
-			filePath = getExcludedFilePath(relativePath)
-			glfliteFilePath = relativePath
-		} else {
-		}
-
-		filePath = "." + relativePath
+		filePath := strings.TrimPrefix(relativePath, "/")
 
 		files = append(files, fileInformation{
-			Path:         info
-			IsDirectory:  info.IsDir(),
-			LastModified: info.ModTime().Unix(),
+			path:         filePath,
+			isDirectory:  info.IsDir(),
+			lastModified: info.ModTime(),
+			size:         info.Size(),
 		})
 
 		return nil
@@ -282,4 +276,42 @@ func isFileExcluded(gitIgnoreFiles []string, path string, isDir bool) bool {
 	}
 
 	return isExcluded
+}
+
+func (app *application) getFileShasum(fileName string) (string, error) {
+	bufferSize := 32 * 1024 // 32KB buffer
+
+	filePath := fileName
+	if !fileExists(filePath) {
+		return "", errors.New(fmt.Sprintf("file %s does not exist", fileName))
+	}
+
+	file, err := os.Open(app.getFullPath(filePath))
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	buf := make([]byte, bufferSize)
+
+	for {
+		n, err := file.Read(buf)
+		if n > 0 {
+			_, err := hash.Write(buf[:n])
+			if err != nil {
+				return "", err
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
