@@ -331,7 +331,7 @@ func (app *application) generateRsyncFileList() error {
 
 		if trackedFile.isPresent {
 
-			_, err = file.WriteString(fmt.Sprintf("\"./%s\"\n", fileFullPath))
+			_, err = file.WriteString(fmt.Sprintf("./%s\n", fileFullPath))
 
 			if err != nil {
 				return err

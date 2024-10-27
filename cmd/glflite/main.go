@@ -234,29 +234,43 @@ func main() {
 				filesMissing++
 			} else {
 
-				if fileData.LastModified == file.file.lastModified && fileData.Size == file.file.size {
+				if force {
+					shaSum, err := app.getFileShasum(fileFullPath)
 
-					if force {
-						shaSum, err := app.getFileShasum(fileFullPath)
+					if err != nil {
+						printError(err.Error())
+					}
 
-						if err != nil {
-							printError(err.Error())
-						}
-
-						if shaSum != fileData.Sha256Sum {
-							file.isUpToDate = false
-						}
-
-						if verbose {
-							fmt.Printf("File %s is up to date because the Sha256 sum is the same: %s\n", fileFullPath, shaSum)
-						}
+					if shaSum == fileData.Sha256Sum {
+						file.isUpToDate = true
 					} else {
+						file.isUpToDate = false
+					}
+
+					if verbose {
+						fmt.Printf("File %s is up to date because the Sha256 sum is the same: %s\n", fileFullPath, shaSum)
+					}
+				} else {
+					if fileData.LastModified.Unix() == file.file.lastModified.Unix() && fileData.Size == file.file.size {
+
 						if verbose {
 							fmt.Printf("File %s is up to date because the last modified date and the size are the same.\n", fileFullPath)
 						}
-					}
 
-					file.isUpToDate = true
+						file.isUpToDate = true
+					} else {
+						if verbose {
+							if fileData.LastModified.Unix() != file.file.lastModified.Unix() {
+								fmt.Printf("File %s is not up to date because the last modified date is different. %s != %s\n", fileFullPath, fileData.LastModified, file.file.lastModified)
+							}
+
+							if fileData.Size != file.file.size {
+								fmt.Printf("File %s is not up to date because the size is different. %d != %d\n", fileFullPath, fileData.Size, file.file.size)
+							}
+						}
+
+						file.isUpToDate = false
+					}
 				}
 
 				if file.isUpToDate {
@@ -361,7 +375,7 @@ func main() {
 					trackedFileData.shasum = data.Sha256Sum
 					app.trackedFiles[fileFullPath] = trackedFileData
 
-					if data.LastModified == file.file.lastModified && data.Size == file.file.size {
+					if data.LastModified.Unix() == file.file.lastModified.Unix() && data.Size == file.file.size {
 						if verbose {
 							fmt.Println("File " + fileFullPath + " is up to date.")
 						}
