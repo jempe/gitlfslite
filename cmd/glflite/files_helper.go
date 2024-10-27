@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -72,7 +73,7 @@ func createGitIgnoreFile(folder string) error {
 
 	defer file.Close()
 
-	_, err = file.WriteString("#GitLFSLite\n")
+	_, err = file.WriteString("\nrsync_list_glflite\n#GitLFSLite\n")
 
 	if err != nil {
 		return err
@@ -210,7 +211,7 @@ func getGLFLiteFilePath(file string) string {
 	return file + "." + fileExtension
 }
 
-func getExcludedFilePath(file string) string {
+func getTrackedFilePath(file string) string {
 
 	return strings.TrimSuffix(file, "."+fileExtension)
 }
@@ -248,9 +249,9 @@ func isFileExcluded(gitIgnoreFiles []string, path string, isDir bool) bool {
 		// Match pattern using filepath.Match (but handling special cases)
 		matched := false
 		if strings.HasPrefix(line, "*") {
-			excludedFileSuffix := strings.TrimPrefix(line, "*")
+			excludedFileSuffix := strings.ToLower(strings.TrimPrefix(line, "*"))
 
-			if strings.HasSuffix(path, excludedFileSuffix) {
+			if strings.HasSuffix(strings.ToLower(path), excludedFileSuffix) {
 				matched = true
 			}
 		} else {
@@ -314,4 +315,51 @@ func (app *application) getFileShasum(fileName string) (string, error) {
 	}
 
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+func (app *application) generateRsyncFileList() error {
+	file, err := os.Create(app.getFullPath("rsync_list_" + fileExtension))
+
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	for _, fileFullPath := range app.sortedTrackedFiles {
+		trackedFile := app.trackedFiles[fileFullPath]
+
+		if trackedFile.isPresent {
+
+			_, err = file.WriteString(fmt.Sprintf("\"./%s\"\n", fileFullPath))
+
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (app *application) generateSha256FileList() error {
+	var lines []string
+
+	for _, fileFullPath := range app.sortedTrackedFiles {
+		trackedFile := app.trackedFiles[fileFullPath]
+
+		if trackedFile.shasum != "" {
+			lines = append(lines, fmt.Sprintf("%s  ./%s", trackedFile.shasum, fileFullPath))
+		}
+	}
+
+	sort.Strings(lines)
+
+	err := ioutil.WriteFile(app.getFullPath("sha256_list_"+fileExtension), []byte(strings.Join(lines, "\n")), 0644)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

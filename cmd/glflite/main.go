@@ -100,8 +100,11 @@ func main() {
 		fmt.Println("    	File to check or update. It can be a file or a folder.")
 		fmt.Println("  -force")
 		fmt.Println("    	Force the action to be performed, it checks the Sha256 sum of the files to confirm if they are up to date. Whitoout this flag, it only checks the last modified date.")
-		fmt.Println("  -verbose")
-		fmt.Println("    	Prints more information about the files.")
+		fmt.Println("  -quiet")
+		fmt.Println("    	Prints only the summary of the files.")
+		fmt.Println("To sync the files, use the rsync command with the list of files in the rsync_list_glflite file.")
+		fmt.Println("Example:")
+		fmt.Println("   rsync -v -t --files-from=rsync_list_glflite . [destination]")
 		os.Exit(0)
 	}
 
@@ -152,6 +155,7 @@ func main() {
 		printError(err.Error())
 	}
 
+	// find all the present tracked files
 	for _, file := range files {
 		// Check if the file is excluded by the .gitignore file after the #GitLFSLite separator
 		if isFileExcluded(cfg.fileRules, file.path, file.isDirectory) {
@@ -159,6 +163,32 @@ func main() {
 				file:       file,
 				isPresent:  true,
 				isUpToDate: false,
+			}
+		}
+	}
+
+	// find all the glflite files
+	for _, file := range files {
+		if isGLFLiteFile(file.path) {
+			trackedFileName := getTrackedFilePath(file.path)
+
+			if _, ok := app.trackedFiles[trackedFileName]; !ok {
+				trackedFileData, err := app.readJSONFile(trackedFileName)
+
+				if err != nil {
+					printError(err.Error())
+				}
+
+				app.trackedFiles[trackedFileName] = trackedFile{
+					file: fileInformation{
+						path:         trackedFileName,
+						isDirectory:  false,
+						lastModified: trackedFileData.LastModified,
+						size:         trackedFileData.Size,
+					},
+					isPresent:  false,
+					isUpToDate: false,
+				}
 			}
 		}
 	}
@@ -179,6 +209,23 @@ func main() {
 		for _, fileFullPath := range app.sortedTrackedFiles {
 			file := app.trackedFiles[fileFullPath]
 
+			fileData, err := app.readJSONFile(fileFullPath)
+
+			if errors.Is(err, ErrGLFLiteFileNotFound) {
+				if verbose {
+					fmt.Printf("File %s is missing the GLFLite file.\n", fileFullPath)
+				}
+
+			} else if err != nil {
+				printError(err.Error())
+			} else if err == nil {
+
+				// Update the Sha256 sum of the file
+				trackedFileData := app.trackedFiles[fileFullPath]
+				trackedFileData.shasum = fileData.Sha256Sum
+				app.trackedFiles[fileFullPath] = trackedFileData
+			}
+
 			if !file.isPresent {
 				if verbose {
 					fmt.Printf("%s: ", file.file.path)
@@ -186,42 +233,30 @@ func main() {
 				}
 				filesMissing++
 			} else {
-				fileData, err := app.readJSONFile(fileFullPath)
 
-				if errors.Is(err, ErrGLFLiteFileNotFound) {
-					if verbose {
-						fmt.Printf("File %s is missing the GLFLite file.\n", fileFullPath)
-					}
+				if fileData.LastModified == file.file.lastModified && fileData.Size == file.file.size {
 
-				} else if err != nil {
-					printError(err.Error())
-				} else if err == nil {
-					if fileData.LastModified == file.file.lastModified && fileData.Size == file.file.size {
+					if force {
+						shaSum, err := app.getFileShasum(fileFullPath)
 
-						if force {
-							shaSum, err := app.getFileShasum(fileFullPath)
-
-							if err != nil {
-								printError(err.Error())
-							}
-
-							if shaSum != fileData.Sha256Sum {
-								file.isUpToDate = false
-							}
-
-							if verbose {
-								fmt.Printf("File %s is up to date because the Sha256 sum is the same: %s\n", fileFullPath, shaSum)
-							}
-						} else {
-							if verbose {
-								fmt.Printf("File %s is up to date because the last modified date and the size are the same.\n", fileFullPath)
-							}
+						if err != nil {
+							printError(err.Error())
 						}
 
-						file.isUpToDate = true
+						if shaSum != fileData.Sha256Sum {
+							file.isUpToDate = false
+						}
+
+						if verbose {
+							fmt.Printf("File %s is up to date because the Sha256 sum is the same: %s\n", fileFullPath, shaSum)
+						}
+					} else {
+						if verbose {
+							fmt.Printf("File %s is up to date because the last modified date and the size are the same.\n", fileFullPath)
+						}
 					}
-				} else {
-					printError("Unknown error.")
+
+					file.isUpToDate = true
 				}
 
 				if file.isUpToDate {
@@ -238,6 +273,18 @@ func main() {
 					filesNotUpToDate++
 				}
 			}
+		}
+
+		err = app.generateRsyncFileList()
+
+		if err != nil {
+			printError(err.Error())
+		}
+
+		err = app.generateSha256FileList()
+
+		if err != nil {
+			printError(err.Error())
 		}
 
 		if verbose {
@@ -291,6 +338,15 @@ func main() {
 						Sha256Sum:    shasum,
 					}
 
+					newTrackedFile := trackedFile{
+						file:       file.file,
+						isPresent:  true,
+						isUpToDate: true,
+						shasum:     shasum,
+					}
+
+					app.trackedFiles[fileFullPath] = newTrackedFile
+
 					err = app.writeJSONFile(fileFullPath, data)
 
 					if err != nil {
@@ -300,6 +356,11 @@ func main() {
 				} else if err != nil {
 					printError(err.Error())
 				} else if err == nil {
+					// Update the Sha256 sum of the file
+					trackedFileData := app.trackedFiles[fileFullPath]
+					trackedFileData.shasum = data.Sha256Sum
+					app.trackedFiles[fileFullPath] = trackedFileData
+
 					if data.LastModified == file.file.lastModified && data.Size == file.file.size {
 						if verbose {
 							fmt.Println("File " + fileFullPath + " is up to date.")
@@ -331,6 +392,19 @@ func main() {
 				}
 			}
 		}
+
+		err = app.generateRsyncFileList()
+
+		if err != nil {
+			printError(err.Error())
+		}
+
+		err = app.generateSha256FileList()
+
+		if err != nil {
+			printError(err.Error())
+		}
+
 	}
 }
 
