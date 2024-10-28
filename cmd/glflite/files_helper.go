@@ -73,7 +73,7 @@ func createGitIgnoreFile(folder string) error {
 
 	defer file.Close()
 
-	_, err = file.WriteString("\nrsync_list_glflite\n#GitLFSLite\n")
+	_, err = file.WriteString("\nrsync_list_glflite_local\n#GitLFSLite\n")
 
 	if err != nil {
 		return err
@@ -317,8 +317,14 @@ func (app *application) getFileShasum(fileName string) (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
-func (app *application) generateRsyncFileList() error {
-	file, err := os.Create(app.getFullPath("rsync_list_" + fileExtension))
+func (app *application) generateRsyncFileList(local bool) error {
+	fileName := "rsync_list_" + fileExtension
+
+	if local {
+		fileName += "_local"
+	}
+
+	file, err := os.Create(app.getFullPath(fileName))
 
 	if err != nil {
 		return err
@@ -329,7 +335,7 @@ func (app *application) generateRsyncFileList() error {
 	for _, fileFullPath := range app.sortedTrackedFiles {
 		trackedFile := app.trackedFiles[fileFullPath]
 
-		if trackedFile.isPresent {
+		if !local || (trackedFile.isPresent && local) {
 
 			_, err = file.WriteString(fmt.Sprintf("./%s\n", fileFullPath))
 

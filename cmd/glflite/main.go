@@ -289,7 +289,13 @@ func main() {
 			}
 		}
 
-		err = app.generateRsyncFileList()
+		err = app.generateRsyncFileList(true)
+
+		if err != nil {
+			printError(err.Error())
+		}
+
+		err = app.generateRsyncFileList(false)
 
 		if err != nil {
 			printError(err.Error())
@@ -407,7 +413,13 @@ func main() {
 			}
 		}
 
-		err = app.generateRsyncFileList()
+		err = app.generateRsyncFileList(true)
+
+		if err != nil {
+			printError(err.Error())
+		}
+
+		err = app.generateRsyncFileList(false)
 
 		if err != nil {
 			printError(err.Error())
