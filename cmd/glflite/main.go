@@ -323,16 +323,19 @@ func main() {
 		printRed(strconv.Itoa(filesNotUpToDate))
 
 		if app.duplicatedFiles != nil {
-			printRed("Files with duplicates:")
-			for shaSum, files := range app.duplicatedFiles {
-				printRed("  " + shaSum + ":")
-				for i, file := range files {
-					fmt.Printf("     %s\n", file)
+			printRed("Files with duplicates:" + strconv.Itoa(len(app.duplicatedFiles)))
 
-					if i > 0 {
-						fmt.Printf("Command to remove duplicates: mv \"%s\" ~/duplicatedFiles && ln -s \"%s\" \"%s\"\n", file, files[0], file)
+			if verbose {
+				for shaSum, files := range app.duplicatedFiles {
+					printRed("  " + shaSum + ":")
+					for i, file := range files {
+						fmt.Printf("     %s\n", file)
+
+						if i > 0 {
+							fmt.Printf("Command to remove duplicates: mv \"%s\" ~/duplicatedFiles && ln -s \"%s\" \"%s\"\n", file, files[0], file)
+						}
+
 					}
-
 				}
 			}
 
