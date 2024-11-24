@@ -50,6 +50,7 @@ type application struct {
 	config             config
 	trackedFiles       map[string]trackedFile
 	sortedTrackedFiles []string
+	duplicatedFiles    map[string][]string
 }
 
 func main() {
@@ -142,8 +143,9 @@ func main() {
 	cfg.fileRules = fileRules
 
 	app := &application{
-		config:       cfg,
-		trackedFiles: make(map[string]trackedFile),
+		config:          cfg,
+		trackedFiles:    make(map[string]trackedFile),
+		duplicatedFiles: make(map[string][]string),
 	}
 
 	// TODO Add instance information to find out if a files is backed up on another instance easily
@@ -319,6 +321,23 @@ func main() {
 
 		fmt.Printf("Files not up to date: ")
 		printRed(strconv.Itoa(filesNotUpToDate))
+
+		if app.duplicatedFiles != nil {
+			printRed("Files with duplicates:")
+			for shaSum, files := range app.duplicatedFiles {
+				printRed("  " + shaSum + ":")
+				for i, file := range files {
+					fmt.Printf("     %s\n", file)
+
+					if i > 0 {
+						fmt.Printf("Command to remove duplicates: mv \"%s\" ~/duplicatedFiles && ln -s \"%s\" \"%s\"\n", file, files[0], file)
+					}
+
+				}
+			}
+
+			fmt.Println()
+		}
 
 		if !force {
 			fmt.Println("The files are checked using the last modified date and the size.")

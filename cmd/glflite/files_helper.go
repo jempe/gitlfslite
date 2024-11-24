@@ -351,12 +351,30 @@ func (app *application) generateRsyncFileList(local bool) error {
 func (app *application) generateSha256FileList() error {
 	var lines []string
 
+	lastShasum := ""
+	lastFilePath := ""
+
 	for _, fileFullPath := range app.sortedTrackedFiles {
 		trackedFile := app.trackedFiles[fileFullPath]
 
 		if trackedFile.shasum != "" {
 			lines = append(lines, fmt.Sprintf("%s  ./%s", trackedFile.shasum, fileFullPath))
+
+			if lastShasum == trackedFile.shasum {
+
+				if _, ok := app.duplicatedFiles[trackedFile.shasum]; !ok {
+					originalFile := app.trackedFiles[lastFilePath]
+
+					app.duplicatedFiles[trackedFile.shasum] = []string{originalFile.file.path}
+				}
+
+				app.duplicatedFiles[trackedFile.shasum] = append(app.duplicatedFiles[trackedFile.shasum], trackedFile.file.path)
+			}
 		}
+
+		lastShasum = trackedFile.shasum
+		lastFilePath = fileFullPath
+
 	}
 
 	sort.Strings(lines)
