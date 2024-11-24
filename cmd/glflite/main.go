@@ -332,7 +332,7 @@ func main() {
 						fmt.Printf("     %s\n", file)
 
 						if i > 0 {
-							fmt.Printf("Command to remove duplicates: mv \"%s\" ~/duplicatedFiles && ln -s \"%s\" \"%s\"\n", file, files[0], file)
+							fmt.Printf("Command to remove duplicates: mv -i \"%s\" ~/duplicatedFiles && ln -s \"%s\" \"%s\"\n", file, files[0], file)
 						}
 
 					}

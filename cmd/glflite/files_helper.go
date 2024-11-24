@@ -12,6 +12,19 @@ import (
 	"strings"
 )
 
+type fileToSort struct {
+	Shasum string
+	Path   string
+}
+
+func sortFiles(files []fileToSort) []fileToSort {
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Shasum < files[j].Shasum
+	})
+
+	return files
+}
+
 func findGitFolder() (string, error) {
 	var err error
 
@@ -351,8 +364,7 @@ func (app *application) generateRsyncFileList(local bool) error {
 func (app *application) generateSha256FileList() error {
 	var lines []string
 
-	lastShasum := ""
-	lastFilePath := ""
+	sortedByShasum := []fileToSort{}
 
 	for _, fileFullPath := range app.sortedTrackedFiles {
 		trackedFile := app.trackedFiles[fileFullPath]
@@ -360,24 +372,31 @@ func (app *application) generateSha256FileList() error {
 		if trackedFile.shasum != "" {
 			lines = append(lines, fmt.Sprintf("%s  ./%s", trackedFile.shasum, fileFullPath))
 
-			if lastShasum == trackedFile.shasum {
-
-				if _, ok := app.duplicatedFiles[trackedFile.shasum]; !ok {
-					originalFile := app.trackedFiles[lastFilePath]
-
-					app.duplicatedFiles[trackedFile.shasum] = []string{originalFile.file.path}
-				}
-
-				app.duplicatedFiles[trackedFile.shasum] = append(app.duplicatedFiles[trackedFile.shasum], trackedFile.file.path)
-			}
+			sortedByShasum = append(sortedByShasum, fileToSort{Shasum: trackedFile.shasum, Path: fileFullPath})
 		}
-
-		lastShasum = trackedFile.shasum
-		lastFilePath = fileFullPath
-
 	}
 
 	sort.Strings(lines)
+
+	lastShasum := ""
+	lastFilePath := ""
+
+	for _, sortedFile := range sortFiles(sortedByShasum) {
+		if lastShasum == sortedFile.Shasum {
+			if _, ok := app.duplicatedFiles[sortedFile.Shasum]; !ok {
+				app.duplicatedFiles[sortedFile.Shasum] = []string{lastFilePath}
+
+				fmt.Printf("Original file: %s\n", lastFilePath)
+			}
+
+			fmt.Printf("Duplicated file: %s\n", sortedFile.Path)
+
+			app.duplicatedFiles[sortedFile.Shasum] = append(app.duplicatedFiles[sortedFile.Shasum], sortedFile.Path)
+		}
+
+		lastShasum = sortedFile.Shasum
+		lastFilePath = sortedFile.Path
+	}
 
 	err := ioutil.WriteFile(app.getFullPath("sha256_list_"+fileExtension), []byte(strings.Join(lines, "\n")), 0644)
 
