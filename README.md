@@ -1,4 +1,4 @@
-# gitlfslite
+# GitLFSLite
 
 ## Overview
 `gitlfslite` is a tool designed to help you manage large files in your git repository. It provides a simpler alternative to options like Git LFS or Git Annex, which can be complex or costly. This tool allows you to keep big files in sync between multiple repository clones by creating text files with metadata about the large files, which can then be tracked by git.
