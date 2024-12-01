@@ -47,10 +47,11 @@ type trackedFile struct {
 }
 
 type application struct {
-	config             config
-	trackedFiles       map[string]trackedFile
-	sortedTrackedFiles []string
-	duplicatedFiles    map[string][]string
+	config              config
+	trackedFiles        map[string]trackedFile
+	sortedTrackedFiles  []string
+	duplicatedFiles     map[string][]string
+	duplicatedTotalSize int64
 }
 
 func main() {
@@ -207,6 +208,7 @@ func main() {
 		filesMissing := 0
 		filesUpToDate := 0
 		filesNotUpToDate := 0
+		ignoredLinks := 0
 
 		for _, fileFullPath := range app.sortedTrackedFiles {
 			file := app.trackedFiles[fileFullPath]
@@ -214,7 +216,7 @@ func main() {
 			fileData, err := app.readJSONFile(fileFullPath)
 
 			if errors.Is(err, ErrGLFLiteFileNotFound) {
-				if verbose {
+				if !isLink(fileFullPath) && verbose {
 					fmt.Printf("File %s is missing the GLFLite file.\n", fileFullPath)
 				}
 
@@ -236,57 +238,65 @@ func main() {
 				filesMissing++
 			} else {
 
-				if force {
-					shaSum, err := app.getFileShasum(fileFullPath)
-
-					if err != nil {
-						printError(err.Error())
-					}
-
-					if shaSum == fileData.Sha256Sum {
-						file.isUpToDate = true
-					} else {
-						file.isUpToDate = false
-					}
-
+				if isLink(fileFullPath) {
 					if verbose {
-						fmt.Printf("File %s is up to date because the Sha256 sum is the same: %s\n", fileFullPath, shaSum)
+						fmt.Printf("Ignoring link file %s\n", fileFullPath)
 					}
-				} else {
-					if fileData.LastModified.Unix() == file.file.lastModified.Unix() && fileData.Size == file.file.size {
 
-						if verbose {
-							fmt.Printf("File %s is up to date because the last modified date and the size are the same.\n", fileFullPath)
+					ignoredLinks++
+				} else {
+					if force {
+						shaSum, err := app.getFileShasum(fileFullPath)
+
+						if err != nil {
+							printError(err.Error())
 						}
 
-						file.isUpToDate = true
-					} else {
-						if verbose {
-							if fileData.LastModified.Unix() != file.file.lastModified.Unix() {
-								fmt.Printf("File %s is not up to date because the last modified date is different. %s != %s\n", fileFullPath, fileData.LastModified, file.file.lastModified)
-							}
-
-							if fileData.Size != file.file.size {
-								fmt.Printf("File %s is not up to date because the size is different. %d != %d\n", fileFullPath, fileData.Size, file.file.size)
-							}
+						if shaSum == fileData.Sha256Sum {
+							file.isUpToDate = true
+						} else {
+							file.isUpToDate = false
 						}
 
-						file.isUpToDate = false
-					}
-				}
+						if verbose {
+							fmt.Printf("File %s is up to date because the Sha256 sum is the same: %s\n", fileFullPath, shaSum)
+						}
+					} else {
+						if fileData.LastModified.Unix() == file.file.lastModified.Unix() && fileData.Size == file.file.size {
 
-				if file.isUpToDate {
-					if verbose {
-						fmt.Printf("%s: ", file.file.path)
-						printGreen("Up to date")
+							if verbose {
+								fmt.Printf("File %s is up to date because the last modified date and the size are the same.\n", fileFullPath)
+							}
+
+							file.isUpToDate = true
+						} else {
+							if verbose {
+								if fileData.LastModified.Unix() != file.file.lastModified.Unix() {
+									fmt.Printf("File %s is not up to date because the last modified date is different. %s != %s\n", fileFullPath, fileData.LastModified, file.file.lastModified)
+								}
+
+								if fileData.Size != file.file.size {
+									fmt.Printf("File %s is not up to date because the size is different. %d != %d\n", fileFullPath, fileData.Size, file.file.size)
+								}
+							}
+
+							file.isUpToDate = false
+						}
 					}
-					filesUpToDate++
-				} else {
-					if verbose {
-						fmt.Printf("%s: ", file.file.path)
-						printRed("Not up to date")
+
+					if file.isUpToDate {
+						if verbose {
+							fmt.Printf("%s: ", file.file.path)
+							printGreen("Up to date")
+						}
+						filesUpToDate++
+					} else {
+						if verbose {
+							fmt.Printf("%s: ", file.file.path)
+							printRed("Not up to date")
+						}
+						filesNotUpToDate++
 					}
-					filesNotUpToDate++
 				}
 			}
 		}
@@ -313,6 +323,21 @@ func main() {
 			fmt.Println()
 		}
 
+		if app.duplicatedFiles != nil && verbose {
+			for shaSum, files := range app.duplicatedFiles {
+				printRed("  " + shaSum + ":")
+				for i, file := range files {
+					fmt.Printf("     %s\n", file)
+
+					if i > 0 {
+						fmt.Printf("Command to remove duplicates: mv -i \"%s\" ~/duplicatedFiles && ln -s \"%s\" \"%s.glflitelink\"\n", file, files[0], file)
+					}
+
+				}
+			}
+			fmt.Println()
+		}
+
 		fmt.Printf("Files missing: ")
 		printRed(strconv.Itoa(filesMissing))
 
@@ -322,24 +347,26 @@ func main() {
 		fmt.Printf("Files not up to date: ")
 		printRed(strconv.Itoa(filesNotUpToDate))
 
-		if app.duplicatedFiles != nil {
+		fmt.Printf("Ignored links: ")
+		printGreen(strconv.Itoa(ignoredLinks))
+
+		if app.duplicatedTotalSize > 0 {
 			printRed("Files with duplicates:" + strconv.Itoa(len(app.duplicatedFiles)))
 
-			if verbose {
-				for shaSum, files := range app.duplicatedFiles {
-					printRed("  " + shaSum + ":")
-					for i, file := range files {
-						fmt.Printf("     %s\n", file)
+			var humanSize int64
 
-						if i > 0 {
-							fmt.Printf("Command to remove duplicates: mv -i \"%s\" ~/duplicatedFiles && ln -s \"%s\" \"%s\"\n", file, files[0], file)
-						}
-
-					}
-				}
+			if app.duplicatedTotalSize > 1024*1024*1024 {
+				humanSize = app.duplicatedTotalSize / (1024 * 1024 * 1024)
+				printRed(fmt.Sprintf("Total size of duplicated files: %d GB\n", humanSize))
+			} else if app.duplicatedTotalSize > 1024*1024 {
+				humanSize = app.duplicatedTotalSize / (1024 * 1024)
+				printRed(fmt.Sprintf("Total size of duplicated files: %d MB\n", humanSize))
+			} else if app.duplicatedTotalSize > 1024 {
+				humanSize = app.duplicatedTotalSize / 1024
+				printRed(fmt.Sprintf("Total size of duplicated files: %d KB\n", humanSize))
+			} else {
+				printRed(fmt.Sprintf("Total size of duplicated files: %d B\n", app.duplicatedTotalSize))
 			}
-
-			fmt.Println()
 		}
 
 		if !force {
@@ -362,37 +389,43 @@ func main() {
 
 				if errors.Is(err, ErrGLFLiteFileNotFound) {
 
-					if verbose {
-						fmt.Println("Creating GLFLite file for " + fileFullPath)
-					}
+					if isLink(fileFullPath) {
+						if verbose {
+							fmt.Println("Ignoring link file " + fileFullPath)
+						}
+					} else {
+						if verbose {
+							fmt.Println("Creating GLFLite file for " + fileFullPath)
+						}
 
-					shasum, err := app.getFileShasum(fileFullPath)
+						shasum, err := app.getFileShasum(fileFullPath)
 
-					if err != nil {
-						printError(err.Error())
-					}
+						if err != nil {
+							printError(err.Error())
+						}
 
-					data = fileData{
-						FilePath:     fileFullPath,
-						TrackedSince: time.Now(),
-						LastModified: file.file.lastModified,
-						Size:         file.file.size,
-						Sha256Sum:    shasum,
-					}
+						data = fileData{
+							FilePath:     fileFullPath,
+							TrackedSince: time.Now(),
+							LastModified: file.file.lastModified,
+							Size:         file.file.size,
+							Sha256Sum:    shasum,
+						}
 
-					newTrackedFile := trackedFile{
-						file:       file.file,
-						isPresent:  true,
-						isUpToDate: true,
-						shasum:     shasum,
-					}
+						newTrackedFile := trackedFile{
+							file:       file.file,
+							isPresent:  true,
+							isUpToDate: true,
+							shasum:     shasum,
+						}
 
-					app.trackedFiles[fileFullPath] = newTrackedFile
+						app.trackedFiles[fileFullPath] = newTrackedFile
 
-					err = app.writeJSONFile(fileFullPath, data)
+						err = app.writeJSONFile(fileFullPath, data)
 
-					if err != nil {
-						printError(err.Error())
+						if err != nil {
+							printError(err.Error())
+						}
 					}
 
 				} else if err != nil {

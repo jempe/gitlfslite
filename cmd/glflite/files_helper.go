@@ -15,6 +15,7 @@ import (
 type fileToSort struct {
 	Shasum string
 	Path   string
+	Size   int64
 }
 
 func sortFiles(files []fileToSort) []fileToSort {
@@ -138,6 +139,16 @@ func fileExists(filename string) bool {
 	}
 
 	return true
+}
+
+func isLink(filename string) bool {
+	file, err := os.Lstat(filename)
+
+	if err != nil {
+		return false
+	}
+
+	return file.Mode()&os.ModeSymlink == os.ModeSymlink
 }
 
 func isDirectory(filename string) bool {
@@ -372,7 +383,7 @@ func (app *application) generateSha256FileList() error {
 		if trackedFile.shasum != "" {
 			lines = append(lines, fmt.Sprintf("%s  ./%s", trackedFile.shasum, fileFullPath))
 
-			sortedByShasum = append(sortedByShasum, fileToSort{Shasum: trackedFile.shasum, Path: fileFullPath})
+			sortedByShasum = append(sortedByShasum, fileToSort{Shasum: trackedFile.shasum, Path: fileFullPath, Size: trackedFile.file.size})
 		}
 	}
 
@@ -392,6 +403,8 @@ func (app *application) generateSha256FileList() error {
 			fmt.Printf("Duplicated file: %s\n", sortedFile.Path)
 
 			app.duplicatedFiles[sortedFile.Shasum] = append(app.duplicatedFiles[sortedFile.Shasum], sortedFile.Path)
+
+			app.duplicatedTotalSize += sortedFile.Size
 		}
 
 		lastShasum = sortedFile.Shasum
