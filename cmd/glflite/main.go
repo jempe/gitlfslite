@@ -106,7 +106,7 @@ func main() {
 		fmt.Println("    	Prints only the summary of the files.")
 		fmt.Println("To sync the files, use the rsync command with the list of files in the rsync_list_glflite file.")
 		fmt.Println("Example:")
-		fmt.Println("   rsync -v -t --files-from=rsync_list_glflite . [destination]")
+		fmt.Println("   rsync -v -t --ignore-missing-args --files-from=rsync_list_glflite . [destination]")
 		os.Exit(0)
 	}
 
