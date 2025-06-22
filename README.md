@@ -15,7 +15,7 @@ Managing software projects without git is a nightmare. While git is excellent fo
 To install `gitlfslite`, clone the repository and build the Go application:
 ```sh
 git clone https://github.com/jempe/gitlfslite.git
-cd gitlfslite/cmd/glflite
+cd gitlfslite
 go install ./cmd/glflite
 ```
 
