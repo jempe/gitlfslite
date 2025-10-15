@@ -64,13 +64,13 @@ func main() {
 	verbose := true
 
 	if len(os.Args) == 2 {
-		if os.Args[1] == "check" || os.Args[1] == "update" {
+		if os.Args[1] == "check" || os.Args[1] == "update" || os.Args[1] == "encrypt" || os.Args[1] == "decrypt" {
 			action = os.Args[1]
 		} else {
 			action = "help"
 		}
 	} else {
-		flag.StringVar(&action, "action", "help", "Action to perform. Possible values: check, update, help.")
+		flag.StringVar(&action, "action", "help", "Action to perform. Possible values: check, update, encrypt, decrypt, help.")
 		flag.BoolVar(&force, "force", false, "Force the action to be performed, it checks the files completely to confirm if they are up to date.")
 		flag.BoolVar(&quiet, "quiet", false, "Prints only the summary of the files.")
 		flag.StringVar(&filePath, "file", "", "File to check or update. It can be a file or a folder.")
@@ -82,8 +82,8 @@ func main() {
 		}
 	}
 
-	if action != "check" && action != "update" && action != "help" {
-		printError("Invalid action. Possible values: check, update, help.")
+	if action != "check" && action != "update" && action != "encrypt" && action != "decrypt" && action != "help" {
+		printError("Invalid action. Possible values: check, update, encrypt, decrypt, help.")
 	}
 
 	if action == "help" {
@@ -92,12 +92,16 @@ func main() {
 		fmt.Println("Usage: glflite [options]")
 		fmt.Println("Options:")
 		fmt.Println("  -action string")
-		fmt.Println("    	Action to perform. Possible values: check, update, help. (default \"help\")")
+		fmt.Println("    	Action to perform. Possible values: check, update, encrypt, decrypt, help. (default \"help\")")
 		fmt.Println("    	Actions:")
 		fmt.Println("  		check")
 		fmt.Println("    		Checks if the files are up to date.")
 		fmt.Println("  		update")
 		fmt.Println("    		Creates the JSON file with the information of the new files and updates the information of the existing files.")
+		fmt.Println("  		encrypt")
+		fmt.Println("    		Encrypts all tracked files that don't have a .gpg encrypted file yet.")
+		fmt.Println("  		decrypt")
+		fmt.Println("    		Decrypts all .gpg files that don't have the original file yet.")
 		fmt.Println("  -file string")
 		fmt.Println("    	File to check or update. It can be a file or a folder.")
 		fmt.Println("  -force")
@@ -108,6 +112,21 @@ func main() {
 		fmt.Println("Example:")
 		fmt.Println("   rsync -v -t --ignore-missing-args --files-from=rsync_list_glflite . [destination]")
 		os.Exit(0)
+	}
+
+	// Read password from stdin if encrypt or decrypt action is used
+	var password string
+	if action == "encrypt" || action == "decrypt" {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Enter password: ")
+		passwordInput, err := reader.ReadString('\n')
+		if err != nil {
+			printError("Failed to read password: " + err.Error())
+		}
+		password = strings.TrimSpace(passwordInput)
+		if password == "" {
+			printError("Password cannot be empty")
+		}
 	}
 
 	var cfg config
@@ -486,6 +505,132 @@ func main() {
 			printError(err.Error())
 		}
 
+	}
+
+	if action == "encrypt" {
+		if !isGPGInstalled() {
+			printError("GPG is not installed. Please install GPG to use encryption.")
+		}
+
+		filesEncrypted := 0
+		filesSkipped := 0
+		filesError := 0
+
+		for _, fileFullPath := range app.sortedTrackedFiles {
+			file := app.trackedFiles[fileFullPath]
+
+			if !file.isPresent {
+				continue
+			}
+
+			if isLink(fileFullPath) {
+				if verbose {
+					fmt.Printf("Skipping link file %s\n", fileFullPath)
+				}
+				filesSkipped++
+				continue
+			}
+
+			encryptedFile := fileFullPath + ".gpg"
+			if fileExists(encryptedFile) {
+				if verbose {
+					fmt.Printf("Encrypted file already exists for %s\n", fileFullPath)
+				}
+				filesSkipped++
+				continue
+			}
+
+			if verbose {
+				fmt.Printf("Encrypting %s...\n", fileFullPath)
+			}
+
+			err := encryptFile(fileFullPath, password)
+			if err != nil {
+				if verbose {
+					fmt.Printf("%sError encrypting %s: %s%s\n", colorRed, fileFullPath, err.Error(), colorReset)
+				}
+				filesError++
+			} else {
+				if verbose {
+					fmt.Printf("%sSuccessfully encrypted %s%s\n", colorGreen, fileFullPath, colorReset)
+				}
+				filesEncrypted++
+			}
+		}
+
+		fmt.Printf("\nEncryption Summary:\n")
+		fmt.Printf("Files encrypted: ")
+		printGreen(strconv.Itoa(filesEncrypted))
+		fmt.Printf("Files skipped: ")
+		printGreen(strconv.Itoa(filesSkipped))
+		if filesError > 0 {
+			fmt.Printf("Files with errors: ")
+			printRed(strconv.Itoa(filesError))
+		}
+	}
+
+	if action == "decrypt" {
+		if !isGPGInstalled() {
+			printError("GPG is not installed. Please install GPG to use decryption.")
+		}
+
+		filesDecrypted := 0
+		filesSkipped := 0
+		filesError := 0
+
+		// Find all .gpg files in the repository
+		files, err := findAllFilesAndFolders(cfg.rootFolder)
+		if err != nil {
+			printError(err.Error())
+		}
+
+		for _, file := range files {
+			if file.isDirectory {
+				continue
+			}
+
+			// Check if it's a .gpg file
+			if len(file.path) < 5 || file.path[len(file.path)-4:] != ".gpg" {
+				continue
+			}
+
+			// Check if the original file already exists
+			originalFile := file.path[:len(file.path)-4]
+			if fileExists(originalFile) {
+				if verbose {
+					fmt.Printf("Original file already exists for %s\n", file.path)
+				}
+				filesSkipped++
+				continue
+			}
+
+			if verbose {
+				fmt.Printf("Decrypting %s...\n", file.path)
+			}
+
+			err := decryptFile(file.path, password)
+			if err != nil {
+				if verbose {
+					fmt.Printf("%sError decrypting %s: %s%s\n", colorRed, file.path, err.Error(), colorReset)
+				}
+				filesError++
+			} else {
+				if verbose {
+					fmt.Printf("%sSuccessfully decrypted %s%s\n", colorGreen, file.path, colorReset)
+				}
+				filesDecrypted++
+			}
+		}
+
+		fmt.Printf("\nDecryption Summary:\n")
+		fmt.Printf("Files decrypted: ")
+		printGreen(strconv.Itoa(filesDecrypted))
+		fmt.Printf("Files skipped: ")
+		printGreen(strconv.Itoa(filesSkipped))
+		if filesError > 0 {
+			fmt.Printf("Files with errors: ")
+			printRed(strconv.Itoa(filesError))
+		}
 	}
 }
 
