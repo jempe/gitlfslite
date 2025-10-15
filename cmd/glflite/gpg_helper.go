@@ -144,7 +144,7 @@ func verifyPassword(rootFolder, password string) error {
 	// Create a temporary output file path
 	verifyFile := filepath.Join(rootFolder, "glflite-verify")
 
-	// If the decrypted file exists, remove it first
+	// If the decrypted file exists, remove it first (decryptFile will fail if it exists)
 	if fileExists(verifyFile) {
 		err := os.Remove(verifyFile)
 		if err != nil {
@@ -152,21 +152,8 @@ func verifyPassword(rootFolder, password string) error {
 		}
 	}
 
-	// Try to decrypt the verification file
-	cmd := exec.Command("gpg",
-		"--batch",
-		"--yes",
-		"--passphrase-fd", "0",
-		"--decrypt",
-		"--output", verifyFile,
-		verifyFileGPG)
-
-	cmd.Stdin = bytes.NewBufferString(password)
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
+	// Try to decrypt the verification file using the existing decryptFile function
+	err := decryptFile(verifyFileGPG, password)
 	if err != nil {
 		return fmt.Errorf("incorrect password")
 	}
