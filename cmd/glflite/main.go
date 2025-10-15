@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 const (
@@ -117,13 +119,13 @@ func main() {
 	// Read password from stdin if encrypt or decrypt action is used
 	var password string
 	if action == "encrypt" || action == "decrypt" {
-		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter password: ")
-		passwordInput, err := reader.ReadString('\n')
+		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println() // Print newline after password input
 		if err != nil {
 			printError("Failed to read password: " + err.Error())
 		}
-		password = strings.TrimSpace(passwordInput)
+		password = strings.TrimSpace(string(passwordBytes))
 		if password == "" {
 			printError("Password cannot be empty")
 		}
