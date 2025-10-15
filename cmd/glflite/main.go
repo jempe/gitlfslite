@@ -619,6 +619,18 @@ func main() {
 					fmt.Printf("%sSuccessfully decrypted %s%s\n", colorGreen, file.path, colorReset)
 				}
 				filesDecrypted++
+
+				// Restore the original file timestamp from the .glflite file
+				if trackedFile, ok := app.trackedFiles[originalFile]; ok {
+					err := os.Chtimes(originalFile, trackedFile.file.lastModified, trackedFile.file.lastModified)
+					if err != nil {
+						if verbose {
+							fmt.Printf("%sWarning: Could not restore timestamp for %s: %s%s\n", colorRed, originalFile, err.Error(), colorReset)
+						}
+					} else if verbose {
+						fmt.Printf("Restored timestamp for %s to %s\n", originalFile, trackedFile.file.lastModified.Format("2006-01-02 15:04:05"))
+					}
+				}
 			}
 		}
 
