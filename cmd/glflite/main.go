@@ -512,6 +512,32 @@ func main() {
 			printError("GPG is not installed. Please install GPG to use encryption.")
 		}
 
+		// Check if verification file exists, if so verify password, otherwise create it
+		verifyFileGPG := cfg.rootFolder + "/glflite-verify.gpg"
+		if fileExists(verifyFileGPG) {
+			if verbose {
+				fmt.Println("Verifying password...")
+			}
+			err := verifyPassword(cfg.rootFolder, password)
+			if err != nil {
+				printError("Password verification failed: " + err.Error())
+			}
+			if verbose {
+				fmt.Println("Password verified successfully.")
+			}
+		} else {
+			if verbose {
+				fmt.Println("Creating password verification file...")
+			}
+			err := createPasswordVerificationFile(cfg.rootFolder, password)
+			if err != nil {
+				printError("Failed to create password verification file: " + err.Error())
+			}
+			if verbose {
+				fmt.Println("Password verification file created successfully.")
+			}
+		}
+
 		filesEncrypted := 0
 		filesSkipped := 0
 		filesError := 0
@@ -574,6 +600,25 @@ func main() {
 			printError("GPG is not installed. Please install GPG to use decryption.")
 		}
 
+		// Verify password before attempting to decrypt files
+		verifyFileGPG := cfg.rootFolder + "/glflite-verify.gpg"
+		if fileExists(verifyFileGPG) {
+			if verbose {
+				fmt.Println("Verifying password...")
+			}
+			err := verifyPassword(cfg.rootFolder, password)
+			if err != nil {
+				printError("Password verification failed: " + err.Error())
+			}
+			if verbose {
+				fmt.Println("Password verified successfully.")
+			}
+		} else {
+			if verbose {
+				fmt.Println("Warning: Password verification file not found. Proceeding without verification.")
+			}
+		}
+
 		filesDecrypted := 0
 		filesSkipped := 0
 		filesError := 0
@@ -612,6 +657,9 @@ func main() {
 			if err != nil {
 				if verbose {
 					fmt.Printf("%sError decrypting %s: %s%s\n", colorRed, file.path, err.Error(), colorReset)
+					if filesDecrypted == 0 && filesError == 0 {
+						fmt.Printf("%sHint: Check if your password is correct%s\n", colorRed, colorReset)
+					}
 				}
 				filesError++
 			} else {

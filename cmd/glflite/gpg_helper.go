@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 func isGPGInstalled() bool {
@@ -93,6 +95,84 @@ func decryptFile(filename, password string) error {
 	if err != nil {
 		return fmt.Errorf("gpg decryption failed: %s - %s", err.Error(), stderr.String())
 	}
+
+	return nil
+}
+
+// createPasswordVerificationFile creates a verification file to validate passwords
+func createPasswordVerificationFile(rootFolder, password string) error {
+	verifyFile := filepath.Join(rootFolder, "glflite-verify")
+	verifyFileGPG := verifyFile + ".gpg"
+
+	// Check if verification file already exists
+	if fileExists(verifyFileGPG) {
+		return nil // Already exists, no need to create
+	}
+
+	// Create a temporary file with a known token
+	token := "glflite-password-verification-token"
+	err := os.WriteFile(verifyFile, []byte(token), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create verification file: %s", err.Error())
+	}
+
+	// Encrypt the verification file
+	err = encryptFile(verifyFile, password)
+	if err != nil {
+		os.Remove(verifyFile) // Clean up
+		return fmt.Errorf("failed to encrypt verification file: %s", err.Error())
+	}
+
+	// Remove the unencrypted verification file
+	err = os.Remove(verifyFile)
+	if err != nil {
+		return fmt.Errorf("failed to remove unencrypted verification file: %s", err.Error())
+	}
+
+	return nil
+}
+
+// verifyPassword checks if the provided password is correct by attempting to decrypt the verification file
+func verifyPassword(rootFolder, password string) error {
+	verifyFileGPG := filepath.Join(rootFolder, "glflite-verify.gpg")
+
+	// Check if verification file exists
+	if !fileExists(verifyFileGPG) {
+		return fmt.Errorf("password verification file not found")
+	}
+
+	// Create a temporary output file path
+	verifyFile := filepath.Join(rootFolder, "glflite-verify")
+
+	// If the decrypted file exists, remove it first
+	if fileExists(verifyFile) {
+		err := os.Remove(verifyFile)
+		if err != nil {
+			return fmt.Errorf("failed to remove existing verification file: %s", err.Error())
+		}
+	}
+
+	// Try to decrypt the verification file
+	cmd := exec.Command("gpg",
+		"--batch",
+		"--yes",
+		"--passphrase-fd", "0",
+		"--decrypt",
+		"--output", verifyFile,
+		verifyFileGPG)
+
+	cmd.Stdin = bytes.NewBufferString(password)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("incorrect password")
+	}
+
+	// Clean up the decrypted verification file
+	os.Remove(verifyFile)
 
 	return nil
 }

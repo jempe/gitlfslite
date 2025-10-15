@@ -87,7 +87,7 @@ func createGitIgnoreFile(folder string) error {
 
 	defer file.Close()
 
-	_, err = file.WriteString("\nrsync_list_glflite_local\n#GitLFSLite\n")
+	_, err = file.WriteString("\nrsync_list_glflite_local\nglflite-verify\nglflite-verify.gpg\n#GitLFSLite\n")
 
 	if err != nil {
 		return err
