@@ -306,12 +306,12 @@ func isFileExcluded(gitIgnoreFiles []string, path string, isDir bool) bool {
 func (app *application) getFileShasum(fileName string) (string, error) {
 	bufferSize := 32 * 1024 // 32KB buffer
 
-	filePath := fileName
+	filePath := app.getFullPath(fileName)
 	if !fileExists(filePath) {
 		return "", errors.New(fmt.Sprintf("file %s does not exist", fileName))
 	}
 
-	file, err := os.Open(app.getFullPath(filePath))
+	file, err := os.Open(filePath)
 	if err != nil {
 		return "", err
 	}

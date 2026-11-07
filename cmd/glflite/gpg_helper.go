@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 func isGPGInstalled() bool {
@@ -97,6 +98,13 @@ func decryptFile(filename, password string) error {
 	}
 
 	return nil
+}
+
+// isDecryptableFile reports whether a repo-relative path is a .gpg file that
+// should be decrypted. The password verification file is excluded so its
+// plain-text token is never left in the repository.
+func isDecryptableFile(path string) bool {
+	return len(path) > 4 && strings.HasSuffix(path, ".gpg") && path != "glflite-verify.gpg"
 }
 
 // createPasswordVerificationFile creates a verification file to validate passwords

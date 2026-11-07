@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	version            = "2.0.0"
+	version            = "2.0.1"
 	colorRed           = "\033[31m"
 	colorGreen         = "\033[32m"
 	colorReset         = "\033[0m"
@@ -237,7 +237,7 @@ func main() {
 			fileData, err := app.readJSONFile(fileFullPath)
 
 			if errors.Is(err, ErrGLFLiteFileNotFound) {
-				if !isLink(fileFullPath) && verbose {
+				if !isLink(app.getFullPath(fileFullPath)) && verbose {
 					fmt.Printf("File %s is missing the GLFLite file.\n", fileFullPath)
 				}
 
@@ -259,7 +259,7 @@ func main() {
 				filesMissing++
 			} else {
 
-				if isLink(fileFullPath) {
+				if isLink(app.getFullPath(fileFullPath)) {
 					if verbose {
 						fmt.Printf("Ignoring link file %s\n", fileFullPath)
 					}
@@ -410,7 +410,7 @@ func main() {
 
 				if errors.Is(err, ErrGLFLiteFileNotFound) {
 
-					if isLink(fileFullPath) {
+					if isLink(app.getFullPath(fileFullPath)) {
 						if verbose {
 							fmt.Println("Ignoring link file " + fileFullPath)
 						}
@@ -551,7 +551,7 @@ func main() {
 				continue
 			}
 
-			if isLink(fileFullPath) {
+			if isLink(app.getFullPath(fileFullPath)) {
 				if verbose {
 					fmt.Printf("Skipping link file %s\n", fileFullPath)
 				}
@@ -559,7 +559,7 @@ func main() {
 				continue
 			}
 
-			encryptedFile := fileFullPath + ".gpg"
+			encryptedFile := app.getFullPath(fileFullPath) + ".gpg"
 			if fileExists(encryptedFile) {
 				if verbose {
 					fmt.Printf("Encrypted file already exists for %s\n", fileFullPath)
@@ -572,7 +572,7 @@ func main() {
 				fmt.Printf("Encrypting %s...\n", fileFullPath)
 			}
 
-			err := encryptFile(fileFullPath, password)
+			err := encryptFile(app.getFullPath(fileFullPath), password)
 			if err != nil {
 				if verbose {
 					fmt.Printf("%sError encrypting %s: %s%s\n", colorRed, fileFullPath, err.Error(), colorReset)
@@ -636,14 +636,15 @@ func main() {
 				continue
 			}
 
-			// Check if it's a .gpg file
-			if len(file.path) < 5 || file.path[len(file.path)-4:] != ".gpg" {
+			// Check if it's a .gpg file, skipping the password verification file
+			if !isDecryptableFile(file.path) {
 				continue
 			}
 
 			// Check if the original file already exists
 			originalFile := file.path[:len(file.path)-4]
-			if fileExists(originalFile) {
+			originalFullPath := app.getFullPath(originalFile)
+			if fileExists(originalFullPath) {
 				if verbose {
 					fmt.Printf("Original file already exists for %s\n", file.path)
 				}
@@ -655,7 +656,7 @@ func main() {
 				fmt.Printf("Decrypting %s...\n", file.path)
 			}
 
-			err := decryptFile(file.path, password)
+			err := decryptFile(app.getFullPath(file.path), password)
 			if err != nil {
 				if verbose {
 					fmt.Printf("%sError decrypting %s: %s%s\n", colorRed, file.path, err.Error(), colorReset)
@@ -672,7 +673,7 @@ func main() {
 
 				// Restore the original file timestamp from the .glflite file
 				if trackedFile, ok := app.trackedFiles[originalFile]; ok {
-					err := os.Chtimes(originalFile, trackedFile.file.lastModified, trackedFile.file.lastModified)
+					err := os.Chtimes(originalFullPath, trackedFile.file.lastModified, trackedFile.file.lastModified)
 					if err != nil {
 						if verbose {
 							fmt.Printf("%sWarning: Could not restore timestamp for %s: %s%s\n", colorRed, originalFile, err.Error(), colorReset)
