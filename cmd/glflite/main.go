@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	version            = "2.0.1"
+	version            = "2.0.2"
 	colorRed           = "\033[31m"
 	colorGreen         = "\033[32m"
 	colorReset         = "\033[0m"
@@ -23,6 +23,9 @@ const (
 	fileExtension      = "glflite"
 	gitIgnoreSeparator = "#GitLFSLite"
 )
+
+//What's new
+// Find moved files when updating and prompt to move them to the new location
 
 type config struct {
 	rootFolder string
@@ -140,16 +143,11 @@ func main() {
 		printError(err.Error())
 	}
 
+	reader := bufio.NewReader(os.Stdin)
+
 	// check if the folder has a .gitignore file, ask the user if they want to create one if it doesn't
 	if !hasGitIgnoreFile(gitFolder) {
-		reader := bufio.NewReader(os.Stdin)
-
-		fmt.Print("The folder doesn't have a .gitignore file. Do you want to create a .gitignore file? (yes/no): ")
-		response, _ := reader.ReadString('\n')
-
-		response = strings.TrimSpace(strings.ToLower(response))
-
-		if response == "yes" || response == "y" {
+		if askYesNo(reader, "The folder doesn't have a .gitignore file. Do you want to create a .gitignore file?") {
 			createGitIgnoreFile(gitFolder)
 		}
 	}
@@ -415,14 +413,46 @@ func main() {
 							fmt.Println("Ignoring link file " + fileFullPath)
 						}
 					} else {
+						// Check if the file was moved in another clone: a missing tracked file with the same name and Sha256 sum
+						destinations, shasum, err := app.findMoveDestinations(fileFullPath)
+
+						if err != nil {
+							printError(err.Error())
+						}
+
+						moved := false
+
+						for _, destination := range destinations {
+							if askYesNo(reader, fmt.Sprintf("File %s has no GLFLite file, but the missing file %s has the same name and Sha256 sum. Do you want to move %s to %s?", fileFullPath, destination, fileFullPath, destination)) {
+								err = app.moveTrackedFile(fileFullPath, destination)
+
+								if err != nil {
+									printError(err.Error())
+								}
+
+								if verbose {
+									fmt.Printf("Moved %s to %s\n", fileFullPath, destination)
+								}
+
+								moved = true
+								break
+							}
+						}
+
+						if moved {
+							continue
+						}
+
 						if verbose {
 							fmt.Println("Creating GLFLite file for " + fileFullPath)
 						}
 
-						shasum, err := app.getFileShasum(fileFullPath)
+						if shasum == "" {
+							shasum, err = app.getFileShasum(fileFullPath)
 
-						if err != nil {
-							printError(err.Error())
+							if err != nil {
+								printError(err.Error())
+							}
 						}
 
 						data = fileData{
@@ -695,6 +725,15 @@ func main() {
 			printRed(strconv.Itoa(filesError))
 		}
 	}
+}
+
+func askYesNo(reader *bufio.Reader, question string) bool {
+	fmt.Print(question + " (Y/n): ")
+	response, _ := reader.ReadString('\n')
+
+	response = strings.TrimSpace(strings.ToLower(response))
+
+	return response == "yes" || response == "y" || response == ""
 }
 
 func printError(message string) {

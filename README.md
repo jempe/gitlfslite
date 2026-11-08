@@ -68,6 +68,9 @@ rsync_list_glflite_local
 *.mp4
 ```
 
+## Moved Files
+If a file was moved in another clone, `update` detects it: when a file without a `.glflite` file has the same name and Sha256 sum as a missing file that has a `.glflite` file, it asks if you want to move the file to that location. The file keeps the last modified date stored in the `.glflite` file, so it shows as up to date. If you answer no, a new `.glflite` file is created as usual.
+
 ## Contributing
 Feel free to fork the repository and submit pull requests. For major changes, please open an issue first to discuss what you would like to change.
 

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 )
 
 // sha256 of "hello"
@@ -240,6 +241,153 @@ func TestGetFileShasumFromSubfolder(t *testing.T) {
 
 	if got != helloShasum {
 		t.Errorf("got %s, want %s", got, helloShasum)
+	}
+}
+
+// newMovedFileRepo simulates a file moved in another clone: "old/video.mp4" is present
+// without a GLFLite file, while "new/video.mp4" is missing but has a GLFLite file.
+func newMovedFileRepo(t *testing.T) (string, *application) {
+	t.Helper()
+
+	root := newTestRepo(t, "")
+	chdir(t, t.TempDir())
+
+	writeTestFile(t, root, "old/video.mp4", "hello")
+	if err := os.Mkdir(filepath.Join(root, "new"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	app := newTestApp(root)
+	addTrackedFile(app, "new/video.mp4", false, "", 5)
+	addTrackedFile(app, "old/video.mp4", true, "", 5)
+
+	err := app.writeJSONFile("new/video.mp4", fileData{
+		FilePath:     "new/video.mp4",
+		LastModified: time.Unix(1600000000, 0),
+		Size:         5,
+		Sha256Sum:    helloShasum,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return root, app
+}
+
+func TestFindMoveDestinations(t *testing.T) {
+	t.Run("same name and checksum", func(t *testing.T) {
+		_, app := newMovedFileRepo(t)
+
+		destinations, shasum, err := app.findMoveDestinations("old/video.mp4")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(destinations, []string{"new/video.mp4"}) {
+			t.Errorf("destinations = %q", destinations)
+		}
+
+		if shasum != helloShasum {
+			t.Errorf("shasum = %s, want %s", shasum, helloShasum)
+		}
+	})
+
+	t.Run("different checksum", func(t *testing.T) {
+		root, app := newMovedFileRepo(t)
+		writeTestFile(t, root, "old/video.mp4", "changed")
+
+		destinations, _, err := app.findMoveDestinations("old/video.mp4")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(destinations) != 0 {
+			t.Errorf("destinations = %q, want none", destinations)
+		}
+	})
+
+	t.Run("different name skips checksum", func(t *testing.T) {
+		root, app := newMovedFileRepo(t)
+		writeTestFile(t, root, "old/other.mp4", "hello")
+		addTrackedFile(app, "old/other.mp4", true, "", 5)
+
+		destinations, shasum, err := app.findMoveDestinations("old/other.mp4")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(destinations) != 0 || shasum != "" {
+			t.Errorf("destinations = %q, shasum = %q, want none", destinations, shasum)
+		}
+	})
+
+	t.Run("present files are not destinations", func(t *testing.T) {
+		root, app := newMovedFileRepo(t)
+		writeTestFile(t, root, "new/video.mp4", "hello")
+		tf := app.trackedFiles["new/video.mp4"]
+		tf.isPresent = true
+		app.trackedFiles["new/video.mp4"] = tf
+
+		destinations, _, err := app.findMoveDestinations("old/video.mp4")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(destinations) != 0 {
+			t.Errorf("destinations = %q, want none", destinations)
+		}
+	})
+}
+
+func TestMoveTrackedFile(t *testing.T) {
+	root, app := newMovedFileRepo(t)
+
+	if err := app.moveTrackedFile("old/video.mp4", "new/video.mp4"); err != nil {
+		t.Fatal(err)
+	}
+
+	if fileExists(filepath.Join(root, "old/video.mp4")) {
+		t.Error("source file should be gone")
+	}
+
+	destination := filepath.Join(root, "new/video.mp4")
+	if got := readTestFile(t, destination); got != "hello" {
+		t.Errorf("destination content = %q", got)
+	}
+
+	info, err := os.Stat(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.ModTime().Unix() != 1600000000 {
+		t.Errorf("modification date = %d, want the one from the GLFLite file", info.ModTime().Unix())
+	}
+
+	if _, ok := app.trackedFiles["old/video.mp4"]; ok {
+		t.Error("source should no longer be tracked")
+	}
+
+	moved := app.trackedFiles["new/video.mp4"]
+	if !moved.isPresent || !moved.isUpToDate || moved.shasum != helloShasum || moved.file.path != "new/video.mp4" {
+		t.Errorf("unexpected tracked file state: %+v", moved)
+	}
+
+	if !reflect.DeepEqual(app.sortedTrackedFiles, []string{"new/video.mp4"}) {
+		t.Errorf("sortedTrackedFiles = %q", app.sortedTrackedFiles)
+	}
+}
+
+func TestMoveTrackedFileDestinationExists(t *testing.T) {
+	root, app := newMovedFileRepo(t)
+	writeTestFile(t, root, "new/video.mp4", "other")
+
+	if err := app.moveTrackedFile("old/video.mp4", "new/video.mp4"); err == nil {
+		t.Error("expected an error when the destination exists")
+	}
+
+	if got := readTestFile(t, filepath.Join(root, "new/video.mp4")); got != "other" {
+		t.Error("existing destination must not be overwritten")
 	}
 }
 

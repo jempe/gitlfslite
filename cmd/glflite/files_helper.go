@@ -341,6 +341,90 @@ func (app *application) getFileShasum(fileName string) (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
+// findMoveDestinations returns the tracked files that are missing locally but whose
+// GLFLite file has the same file name and Sha256 sum as the given file. The Sha256 sum
+// of the given file is only calculated when a missing file with the same name exists.
+func (app *application) findMoveDestinations(fileName string) (destinations []string, shasum string, err error) {
+	for _, candidate := range app.sortedTrackedFiles {
+		if app.trackedFiles[candidate].isPresent || filepath.Base(candidate) != filepath.Base(fileName) {
+			continue
+		}
+
+		data, err := app.readJSONFile(candidate)
+
+		if errors.Is(err, ErrGLFLiteFileNotFound) {
+			continue
+		} else if err != nil {
+			return nil, "", err
+		}
+
+		if shasum == "" {
+			shasum, err = app.getFileShasum(fileName)
+
+			if err != nil {
+				return nil, "", err
+			}
+		}
+
+		if data.Sha256Sum == shasum {
+			destinations = append(destinations, candidate)
+		}
+	}
+
+	return destinations, shasum, nil
+}
+
+// moveTrackedFile moves a file to the location of a missing tracked file, whose folder
+// exists because its GLFLite file was read successfully, and restores
+// the last modified date stored in the GLFLite file, so the file is up to date there.
+func (app *application) moveTrackedFile(source, destination string) error {
+	data, err := app.readJSONFile(destination)
+
+	if err != nil {
+		return err
+	}
+
+	destinationPath := app.getFullPath(destination)
+
+	if fileExists(destinationPath) {
+		return errors.New(fmt.Sprintf("file %s already exists", destination))
+	}
+
+	err = os.Rename(app.getFullPath(source), destinationPath)
+
+	if err != nil {
+		return err
+	}
+
+	err = os.Chtimes(destinationPath, data.LastModified, data.LastModified)
+
+	if err != nil {
+		return err
+	}
+
+	movedFile := app.trackedFiles[source]
+	movedFile.file.path = destination
+	movedFile.file.lastModified = data.LastModified
+	movedFile.isUpToDate = true
+	movedFile.shasum = data.Sha256Sum
+
+	app.trackedFiles[destination] = movedFile
+	delete(app.trackedFiles, source)
+
+	// Build a new slice so callers ranging over the old one are not affected
+	sortedTrackedFiles := make([]string, 0, len(app.sortedTrackedFiles))
+
+	for _, file := range app.sortedTrackedFiles {
+		if file != source {
+			sortedTrackedFiles = append(sortedTrackedFiles, file)
+		}
+	}
+
+	app.sortedTrackedFiles = sortedTrackedFiles
+
+	return nil
+}
+
 func (app *application) generateRsyncFileList(local bool) error {
 	fileName := "rsync_list_" + fileExtension
 
